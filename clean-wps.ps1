@@ -10,7 +10,7 @@ $targetPaths = @(
 $keywords = @("WPS", "Kingsoft", "KWPS", "WPS Office", "\.wps")
 $exclude = @("AMDWPS", "UWPSystem")
 
-# 统计变量（script作用域，确保函数内可修改）
+# 统计变量
 $script:deleted = 0
 $script:modified = 0
 $script:skipped = 0
@@ -22,8 +22,11 @@ function Remove-WPSPriority {
         Write-Host "Error: Path not found - $priorityPath"
         return
     }
+    Write-Host "Processing priority path: $priorityPath"
     Get-ChildItem $priorityPath -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
         $keyPath = $_.PSPath
+        Write-Host "Handling: $keyPath"  # 输出当前处理的项
+        
         $keyName = $_.Name
 
         # 跳过排除项
@@ -34,7 +37,7 @@ function Remove-WPSPriority {
             }
         }
 
-        # 优先删除 TypeOverlay（图标异常核心项）
+        # 优先删除 TypeOverlay
         try {
             $overlay = Get-ItemProperty -Path $keyPath -Name "TypeOverlay" -ErrorAction Stop
             foreach ($kw in $keywords) {
@@ -46,7 +49,7 @@ function Remove-WPSPriority {
             }
         } catch {}
 
-        # 删除 WPS 相关项，失败则置空值
+        # 处理注册表项
         foreach ($kw in $keywords) {
             if ($keyName -match $kw) {
                 try {
@@ -77,15 +80,18 @@ function Remove-WPSPriority {
 }
 
 
-### 2. 清理文章提到的其他路径
+### 2. 清理其他路径
 function Remove-WPSTargets {
     foreach ($path in $targetPaths) {
         if (-not (Test-Path $path)) {
             Write-Host "Error: Path not found - $path"
             continue
         }
+        Write-Host "Processing path: $path"
         Get-ChildItem $path -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
             $keyPath = $_.PSPath
+            Write-Host "Handling: $keyPath"  # 输出当前处理的项
+            
             $keyName = $_.Name
 
             # 跳过排除项
@@ -96,7 +102,7 @@ function Remove-WPSTargets {
                 }
             }
 
-            # 删除 WPS 相关项，失败则置空值
+            # 处理注册表项
             foreach ($kw in $keywords) {
                 if ($keyName -match $kw) {
                     try {
@@ -128,10 +134,13 @@ function Remove-WPSTargets {
 }
 
 
-### 执行清理 + 输出结果
-Remove-WPSPriority  # 调用优先清理函数
-Remove-WPSTargets   # 调用其他路径清理函数
+### 执行清理
+Write-Host "Starting WPS registry cleanup..."  # 开始运行提示
+Remove-WPSPriority
+Remove-WPSTargets
 
+# 输出结果
+Write-Host "`nCleanup complete."
 Write-Host "Deleted: $script:deleted"
 Write-Host "Modified: $script:modified"
 Write-Host "Skipped: $script:skipped"
