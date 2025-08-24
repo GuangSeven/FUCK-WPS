@@ -115,22 +115,25 @@ foreach ($keyword in $searchKeywords) {
                 }
             }
 
-            # 检查值是否匹配关键词
-            Get-ItemProperty -Path $keyPath -ErrorAction SilentlyContinue | Get-Member -MemberType NoteProperty | ForEach-Object {
-                $propName = $_.Name
-                if ($propName -eq "(Default)") { return }
-                
-                $propValue = (Get-ItemProperty -Path $keyPath).$propName
-                if ($propValue -match $keyword -and -not (ShouldExclude $propValue)) {
-                    try {
-                        Remove-ItemProperty -Path $keyPath -Name $propName -Force -ErrorAction Stop
-                        Write-Host "已删除值: $keyPath\$propName" -ForegroundColor $colorSuccess
-                        $script:deletedCount++
-                    }
-                    catch {
-                        Set-ItemProperty -Path $keyPath -Name $propName -Value "" -Force -ErrorAction Stop
-                        Write-Host "已修改值: $keyPath\$propName" -ForegroundColor $colorWarning
-                        $script:modifiedCount++
+            # 检查值是否匹配关键词（修复Get-Member错误的核心部分）
+            $props = Get-ItemProperty -Path $keyPath -ErrorAction SilentlyContinue
+            if ($props) {  # 仅当存在属性时才执行后续操作
+                $props | Get-Member -MemberType NoteProperty -ErrorAction SilentlyContinue | ForEach-Object {
+                    $propName = $_.Name
+                    if ($propName -eq "(Default)") { return }
+                    
+                    $propValue = $props.$propName
+                    if ($propValue -match $keyword -and -not (ShouldExclude $propValue)) {
+                        try {
+                            Remove-ItemProperty -Path $keyPath -Name $propName -Force -ErrorAction Stop
+                            Write-Host "已删除值: $keyPath\$propName" -ForegroundColor $colorSuccess
+                            $script:deletedCount++
+                        }
+                        catch {
+                            Set-ItemProperty -Path $keyPath -Name $propName -Value "" -Force -ErrorAction Stop
+                            Write-Host "已修改值: $keyPath\$propName" -ForegroundColor $colorWarning
+                            $script:modifiedCount++
+                        }
                     }
                 }
             }
