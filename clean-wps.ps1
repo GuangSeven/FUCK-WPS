@@ -37,19 +37,21 @@ function Remove-WPSPriority {
             }
         }
 
-        # 处理 TypeOverlay（图标核心项）
-        try {
-            $overlay = Get-ItemProperty -Path $keyPath -Name "TypeOverlay" -ErrorAction Stop
+        # ========== 修复核心：先判断TypeOverlay是否存在 ==========
+        $overlay = Get-ItemProperty -Path $keyPath -Name "TypeOverlay" -ErrorAction SilentlyContinue
+        if ($overlay) {  # 仅当属性存在时才处理
             foreach ($kw in $keywords) {
                 if ($overlay.TypeOverlay -match $kw) {
-                    Remove-ItemProperty -Path $keyPath -Name "TypeOverlay" -Force -ErrorAction Stop
-                    Write-Host "Deleted TypeOverlay: $keyPath" -ForegroundColor Green
-                    $script:deleted++
-                    break
+                    try {
+                        Remove-ItemProperty -Path $keyPath -Name "TypeOverlay" -Force -ErrorAction Stop
+                        Write-Host "Deleted TypeOverlay: $keyPath" -ForegroundColor Green
+                        $script:deleted++
+                    } catch {
+                        Write-Host "Delete TypeOverlay failed: $keyPath - $_" -ForegroundColor Red
+                    }
+                    break  # 匹配到关键词就停止，避免重复处理
                 }
             }
-        } catch {
-            Write-Host "TypeOverlay access failed: $keyPath - $_" -ForegroundColor Red
         }
 
         # 处理注册表项（删除或修改）
