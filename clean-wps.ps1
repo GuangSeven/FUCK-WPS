@@ -10,64 +10,65 @@ $targetPaths = @(
 $keywords = @("WPS", "Kingsoft", "KWPS", "WPS Office", "\.wps")
 $exclude = @("AMDWPS", "UWPSystem")
 
-# 统计变量
-$deleted = 0
-$modified = 0
-$skipped = 0
+# 统计变量（script作用域，确保函数内可修改）
+$script:deleted = 0
+$script:modified = 0
+$script:skipped = 0
 
-# 优先清理指定路径
-function Remove-WPSPriorityRegistry {
+
+### 1. 优先清理指定路径（核心路径）
+function Remove-WPSPriority {
     if (-not (Test-Path $priorityPath)) {
-        Write-Host "Path not found: $priorityPath"
+        Write-Host "Error: Path not found - $priorityPath"
         return
     }
     Get-ChildItem $priorityPath -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
-        $key = $_.PSPath
-        $name = $_.Name
+        $keyPath = $_.PSPath
+        $keyName = $_.Name
 
-        # 检查排除项
+        # 跳过排除项
         foreach ($ex in $exclude) {
-            if ($name -match $ex) {
+            if ($keyName -match $ex) {
                 $script:skipped++
                 return
             }
         }
 
-        # 处理TypeOverlay（优先清理图标相关）
+        # 优先删除 TypeOverlay（图标异常核心项）
         try {
-            $overlay = Get-ItemProperty -Path $key -Name "TypeOverlay" -ErrorAction Stop
+            $overlay = Get-ItemProperty -Path $keyPath -Name "TypeOverlay" -ErrorAction Stop
             foreach ($kw in $keywords) {
                 if ($overlay.TypeOverlay -match $kw) {
-                    Remove-ItemProperty -Path $key -Name "TypeOverlay" -Force -ErrorAction Stop
+                    Remove-ItemProperty -Path $keyPath -Name "TypeOverlay" -Force -ErrorAction Stop
                     $script:deleted++
                     break
                 }
             }
         } catch {}
 
-        # 处理注册表项
+        # 删除 WPS 相关项，失败则置空值
         foreach ($kw in $keywords) {
-            if ($name -match $kw) {
+            if ($keyName -match $kw) {
                 try {
-                    Remove-Item -Path $key -Recurse -Force -ErrorAction Stop
+                    Remove-Item -Path $keyPath -Recurse -Force -ErrorAction Stop
                     $script:deleted++
                 } catch {
-                    # 处理注册表值（仅字符串类型）
                     try {
-                        $props = Get-ItemProperty -Path $key -ErrorAction Stop
+                        $props = Get-ItemProperty -Path $keyPath -ErrorAction Stop
                         $props | Get-Member -MemberType NoteProperty | ForEach-Object {
-                            $prop = $_.Name
-                            $val = $props.$prop
+                            $propName = $_.Name
+                            $propValue = $props.$propName
                             foreach ($kw in $keywords) {
-                                if ($val -match $kw) {
-                                    Set-ItemProperty -Path $key -Name $prop -Value "" -Force -ErrorAction Stop
+                                if ($propValue -match $kw) {
+                                    Set-ItemProperty -Path $keyPath -Name $propName -Value "" -Force -ErrorAction Stop
                                     $script:modified++
                                     break
                                 }
                             }
                         }
-                    } catch [System.InvalidCastException] { $script:skipped++ }
-                      catch [System.Security.SecurityException] { $script:skipped++ }
+                    } catch { 
+                        $script:skipped++ 
+                    }
                 }
                 break
             }
@@ -75,47 +76,49 @@ function Remove-WPSPriorityRegistry {
     }
 }
 
-# 清理其他目标路径
-function Remove-WPSTargetRegistry {
+
+### 2. 清理文章提到的其他路径
+function Remove-WPSTargets {
     foreach ($path in $targetPaths) {
         if (-not (Test-Path $path)) {
-            Write-Host "Path not found: $path"
+            Write-Host "Error: Path not found - $path"
             continue
         }
         Get-ChildItem $path -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
-            $key = $_.PSPath
-            $name = $_.Name
+            $keyPath = $_.PSPath
+            $keyName = $_.Name
 
-            # 检查排除项
+            # 跳过排除项
             foreach ($ex in $exclude) {
-                if ($name -match $ex) {
+                if ($keyName -match $ex) {
                     $script:skipped++
                     return
                 }
             }
 
-            # 处理注册表项
+            # 删除 WPS 相关项，失败则置空值
             foreach ($kw in $keywords) {
-                if ($name -match $kw) {
+                if ($keyName -match $kw) {
                     try {
-                        Remove-Item -Path $key -Recurse -Force -ErrorAction Stop
+                        Remove-Item -Path $keyPath -Recurse -Force -ErrorAction Stop
                         $script:deleted++
                     } catch {
-                        # 处理注册表值（仅字符串类型）
                         try {
-                            $props = Get-ItemProperty -Path $key -ErrorAction Stop
+                            $props = Get-ItemProperty -Path $keyPath -ErrorAction Stop
                             $props | Get-Member -MemberType NoteProperty | ForEach-Object {
-                                $prop = $_.Name
-                                $val = $props.$prop
+                                $propName = $_.Name
+                                $propValue = $props.$propName
                                 foreach ($kw in $keywords) {
-                                    if ($val -match $kw) {
-                                        Set-ItemProperty -Path $key -Name $prop -Value "" -Force -ErrorAction Stop
+                                    if ($propValue -match $kw) {
+                                        Set-ItemProperty -Path $keyPath -Name $propName -Value "" -Force -ErrorAction Stop
                                         $script:modified++
                                         break
                                     }
                                 }
                             }
-                        } catch { $script:skipped++ }
+                        } catch { 
+                            $script:skipped++ 
+                        }
                     }
                     break
                 }
@@ -124,11 +127,11 @@ function Remove-WPSTargetRegistry {
     }
 }
 
-# 执行清理
-Clean-Priority
-Clean-Targets
 
-# 输出结果
-Write-Host "Deleted: $deleted"
-Write-Host "Modified: $modified"
-Write-Host "Skipped: $skipped"
+### 执行清理 + 输出结果
+Remove-WPSPriority  # 调用优先清理函数
+Remove-WPSTargets   # 调用其他路径清理函数
+
+Write-Host "Deleted: $script:deleted"
+Write-Host "Modified: $script:modified"
+Write-Host "Skipped: $script:skipped"
