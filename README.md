@@ -4,7 +4,7 @@
 
 ## 项目简介
 
-因为主包电脑之前预装了 Office 2019 和 WPS 卸载 WPS 后发现 Office 图标出现很多异常所以决定写一个脚本来修复这些问题。
+因为主包电脑之前预装了 Office 2019 和 WPS，卸载 WPS 后发现 Office 图标出现很多异常所以决定写一个脚本来修复这些问题。
 
 当卸载 WPS Office 后，系统中常残留大量注册表项，可能导致 Microsoft Office 图标显示异常（如空白图标、图标错乱）或文件关联冲突。本工具基于 [NousBuild 技术文章](https://www.nousbuild.org/codeu/fix-office-icon-due-to-wps/) 的清理步骤开发，通过精准扫描并删除 WPS 相关残留注册表项，帮助恢复系统正常的文件关联和图标显示。
 
