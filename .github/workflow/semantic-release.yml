@@ -2,21 +2,21 @@ name: Semantic Release 自动发布
 on:
   push:
     branches:
-      - main  # 仅监听主分支推送（保护分支，避免误操作）
+      - main  # 仅监听主分支推送
 
 jobs:
   release:
-    runs-on: windows-latest  # 脚本是PowerShell，需Windows环境
+    runs-on: windows-latest
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # 必须获取完整提交历史，否则无法分析所有提交
+          fetch-depth: 0
       
       - name: 设置Node.js环境
         uses: actions/setup-node@v4
         with:
-          node-version: 20  # Semantic Release依赖Node.js
+          node-version: 20
       
       - name: 安装Semantic Release依赖
         run: npm install -g semantic-release @semantic-release/commit-analyzer @semantic-release/release-notes-generator @semantic-release/changelog @semantic-release/exec @semantic-release/github @semantic-release/git
@@ -24,4 +24,4 @@ jobs:
       - name: 运行Semantic Release
         run: npx semantic-release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # GitHub内置令牌，自动授权Release操作
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
