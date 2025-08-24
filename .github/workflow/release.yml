@@ -1,0 +1,39 @@
+name: 自动发布Release
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    steps:
+      # 1. 检出代码
+      - name: 检出仓库代码
+        uses: actions/checkout@v4
+
+      # 2. 提取版本号（去掉标签前缀v，如v1.0.0→1.0.0）
+      - name: 提取版本号
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF_NAME:1}" >> $GITHUB_ENV
+        shell: pwsh  # 使用PowerShell执行
+
+      # 3. 准备Release资产
+      - name: 复制脚本到发布目录
+        run: |
+          # 假设脚本名为 cleanWPS.ps1（建议统一为无空格命名）
+          New-Item -ItemType Directory -Path ./release -Force | Out-Null
+          Copy-Item -Path ./cleanWPS.ps1 -Destination ./release/cleanWPS.ps1 -Force
+        shell: pwsh
+
+      # 4. 自动创建Release并上传资产
+      - name: 创建Release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ github.ref_name }}  # 标签名
+          name: "Release ${{ env.VERSION }}"  # Release标题
+          # 从CHANGELOG.md提取对应版本的更新说明
+          body: |
+            $(Get-Content ./CHANGELOG.md | Select-String -Pattern "## \[${{ env.VERSION }}\]" -Context 0, 1000 | ForEach-Object { $_.Line; $_.Context.PostContext } | Out-String | Trim)
+          artifacts: "./release/cleanWPS.ps1"  # 要上传的文件（脚本）
+          token: ${{ github.token }}  # 内置令牌，自动拥有Release权限
