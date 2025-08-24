@@ -18,6 +18,7 @@ $colorInfo = "Cyan"
 $deletedCount = 0
 $modifiedCount = 0
 $skippedCount = 0
+$errorCount = 0  # 新增：记录错误项数量
 
 # 配置参数
 $searchKeywords = @("WPS", "\.wps", "Kingsoft", "KWPS")  # 搜索关键词(正则表达式)
@@ -47,30 +48,37 @@ function ShouldExclude($name) {
 
 # 1. 清理TypeOverlay项（优先处理）
 Write-Host "`n[1/2] 开始清理TypeOverlay项..." -ForegroundColor $colorInfo
-Get-ChildItem "HKCR:\SystemFileAssociations\" -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
-    $keyPath = $_.PSPath
-    $keyName = $_.Name
-    
-    if (ShouldExclude $keyName) {
-        Write-Host "跳过排除项: $keyName" -ForegroundColor $colorWarning
-        $script:skippedCount++
-        return
-    }
+# 先检查路径是否存在，避免无效操作
+if (Test-Path "HKCR:\SystemFileAssociations\") {
+    Get-ChildItem "HKCR:\SystemFileAssociations\" -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+        $keyPath = $_.PSPath
+        $keyName = $_.Name
+        
+        if (ShouldExclude $keyName) {
+            Write-Host "跳过排除项: $keyName" -ForegroundColor $colorWarning
+            $script:skippedCount++
+            return
+        }
 
-    # 检查并删除TypeOverlay值
-    if (Get-ItemProperty -Path $keyPath -Name "TypeOverlay" -ErrorAction SilentlyContinue) {
-        $overlayValue = (Get-ItemProperty -Path $keyPath).TypeOverlay
-        if ($overlayValue -match "WPS Office") {
-            try {
-                Remove-ItemProperty -Path $keyPath -Name "TypeOverlay" -Force -ErrorAction Stop
-                Write-Host "已删除TypeOverlay: $keyPath" -ForegroundColor $colorSuccess
-                $script:deletedCount++
-            }
-            catch {
-                Write-Host "删除失败TypeOverlay: $keyPath - $_" -ForegroundColor $colorError
+        # 检查并删除TypeOverlay值（添加异常捕获）
+        try {
+            if (Get-ItemProperty -Path $keyPath -Name "TypeOverlay" -ErrorAction Stop) {
+                $overlayValue = (Get-ItemProperty -Path $keyPath).TypeOverlay
+                if ($overlayValue -match "WPS Office") {
+                    Remove-ItemProperty -Path $keyPath -Name "TypeOverlay" -Force -ErrorAction Stop
+                    Write-Host "已删除TypeOverlay: $keyPath" -ForegroundColor $colorSuccess
+                    $script:deletedCount++
+                }
             }
         }
+        catch {
+            Write-Host "处理TypeOverlay失败: $keyPath - $_" -ForegroundColor $colorError
+            $script:errorCount++
+        }
     }
+}
+else {
+    Write-Host "路径不存在: HKCR:\SystemFileAssociations\" -ForegroundColor $colorWarning
 }
 
 # 2. 清理其他相关注册表项
@@ -92,16 +100,18 @@ foreach ($keyword in $searchKeywords) {
                 return
             }
 
-            # 检查项名是否匹配关键词
-            if ($keyName -match $keyword) {
-                try {
+            # 检查项名是否匹配关键词（添加异常捕获）
+            try {
+                if ($keyName -match $keyword) {
                     Remove-Item -Path $keyPath -Recurse -Force -ErrorAction Stop
                     Write-Host "已删除项: $keyPath" -ForegroundColor $colorSuccess
                     $script:deletedCount++
                 }
-                catch {
-                    # 尝试修改默认值为空白
-                    if (Get-ItemProperty -Path $keyPath -Name "(Default)" -ErrorAction SilentlyContinue) {
+            }
+            catch {
+                # 尝试修改默认值为空白
+                try {
+                    if (Get-ItemProperty -Path $keyPath -Name "(Default)" -ErrorAction Stop) {
                         $defaultValue = (Get-ItemProperty -Path $keyPath)."(Default)"
                         if ($defaultValue -match $keyword) {
                             Set-ItemProperty -Path $keyPath -Name "(Default)" -Value "" -Force -ErrorAction Stop
@@ -109,33 +119,47 @@ foreach ($keyword in $searchKeywords) {
                             $script:modifiedCount++
                         }
                     }
-                    else {
-                        Write-Host "删除失败项: $keyPath - $_" -ForegroundColor $colorError
-                    }
+                }
+                catch {
+                    Write-Host "处理项失败: $keyPath - $_" -ForegroundColor $colorError
+                    $script:errorCount++
                 }
             }
 
-            # 检查值是否匹配关键词（修复Get-Member错误的核心部分）
-            $props = Get-ItemProperty -Path $keyPath -ErrorAction SilentlyContinue
-            if ($props) {  # 仅当存在属性时才执行后续操作
-                $props | Get-Member -MemberType NoteProperty -ErrorAction SilentlyContinue | ForEach-Object {
-                    $propName = $_.Name
-                    if ($propName -eq "(Default)") { return }
-                    
-                    $propValue = $props.$propName
-                    if ($propValue -match $keyword -and -not (ShouldExclude $propValue)) {
-                        try {
-                            Remove-ItemProperty -Path $keyPath -Name $propName -Force -ErrorAction Stop
-                            Write-Host "已删除值: $keyPath\$propName" -ForegroundColor $colorSuccess
-                            $script:deletedCount++
-                        }
-                        catch {
-                            Set-ItemProperty -Path $keyPath -Name $propName -Value "" -Force -ErrorAction Stop
-                            Write-Host "已修改值: $keyPath\$propName" -ForegroundColor $colorWarning
-                            $script:modifiedCount++
+            # 检查值是否匹配关键词（核心修复：添加try/catch捕获类型转换错误）
+            try {
+                # 尝试读取属性，若失败则直接跳过
+                $props = Get-ItemProperty -Path $keyPath -ErrorAction Stop
+                if ($props) {
+                    $props | Get-Member -MemberType NoteProperty -ErrorAction SilentlyContinue | ForEach-Object {
+                        $propName = $_.Name
+                        if ($propName -eq "(Default)") { return }
+                        
+                        $propValue = $props.$propName
+                        if ($propValue -match $keyword -and -not (ShouldExclude $propValue)) {
+                            try {
+                                Remove-ItemProperty -Path $keyPath -Name $propName -Force -ErrorAction Stop
+                                Write-Host "已删除值: $keyPath\$propName" -ForegroundColor $colorSuccess
+                                $script:deletedCount++
+                            }
+                            catch {
+                                Set-ItemProperty -Path $keyPath -Name $propName -Value "" -Force -ErrorAction Stop
+                                Write-Host "已修改值: $keyPath\$propName" -ForegroundColor $colorWarning
+                                $script:modifiedCount++
+                            }
                         }
                     }
                 }
+            }
+            catch [System.InvalidCastException] {
+                # 专门捕获类型转换错误，仅记录不中断
+                Write-Host "跳过无法解析的项（类型转换错误）: $keyPath" -ForegroundColor $colorWarning
+                $script:skippedCount++
+            }
+            catch {
+                # 其他错误
+                Write-Host "处理属性失败: $keyPath - $_" -ForegroundColor $colorError
+                $script:errorCount++
             }
         }
     }
@@ -146,4 +170,5 @@ Write-Host "`n`n=== 清理完成 ===" -ForegroundColor $colorInfo
 Write-Host "已删除项数量: $deletedCount" -ForegroundColor $colorSuccess
 Write-Host "已修改值数量: $modifiedCount" -ForegroundColor $colorWarning
 Write-Host "跳过排除项数量: $skippedCount" -ForegroundColor $colorInfo
+Write-Host "错误项数量: $errorCount" -ForegroundColor $colorError
 Write-Host "`n建议重启电脑使更改生效！`n" -ForegroundColor $colorInfo
