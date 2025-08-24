@@ -9,4 +9,4 @@
 
 ## 漏洞报告
 
-若发现脚本存在安全问题（如误删关键注册表项），请通过 [Issues](https://github.com/你的用户名/仓库名/issues) 或邮件联系：你的邮箱。
+若发现脚本存在安全问题（如误删关键注册表项），请通过 [Issues](https://github.com/你的用户名/仓库名/issues) 或邮件联系：tangmail@tuta.io。
