@@ -1,8 +1,12 @@
 <#
 .SYNOPSIS
-清除WPS卸载残留注册表项，修复Office图标异常问题
+按关键词精准清理WPS相关注册表项（排除AMDWPS等无关项）
 .DESCRIPTION
-针对路径HKLM:\SOFTWARE\Classes\SystemFileAssociations优化，解决路径找不到和类型转换错误
+- 搜索"WPS"：删除所有相关项（排除UWPSystem、AMDWPS等）
+- 搜索".wps"：删除所有相关注册表文件夹
+- 搜索"Kingsoft"：删除所有相关注册表文件夹
+- 搜索"WPS Office"：删除相关项，无法删除则置空值
+- 搜索"KWPS"：删除相关项，无法删除则置空值
 #>
 
 # 检查管理员权限
@@ -14,87 +18,57 @@ $colorWarning = "Yellow"
 $colorError = "Red"
 $colorInfo = "Cyan"
 
-# 初始化计数器
+# 计数器
 $deletedCount = 0
 $modifiedCount = 0
-$skippedCount = 0
-$errorCount = 0
+$skippedCount = 0  # 记录被排除的无关项数量
 
-# 核心修复：更新目标路径，优先包含你提供的正确路径
+# 核心配置：关键词及对应操作
+$keywordActions = @(
+    @{ Keyword = "WPS"; Action = "DeleteAll"; Description = "删除所有含WPS的项（排除无关项）" },
+    @{ Keyword = "\.wps"; Action = "DeleteFolder"; Description = "删除.wps相关注册表文件夹" },
+    @{ Keyword = "Kingsoft"; Action = "DeleteFolder"; Description = "删除Kingsoft相关注册表文件夹" },
+    @{ Keyword = "WPS Office"; Action = "DeleteOrEmpty"; Description = "删除WPS Office相关项，失败则置空" },
+    @{ Keyword = "KWPS"; Action = "DeleteOrEmpty"; Description = "删除KWPS相关项，失败则置空" }
+)
+
+# 排除列表（含WPS但不相关的项，已添加AMDWPS）
+$excludeKeywords = @("UWPSystem", "AMDWPS")  # 关键修改：新增AMDWPS排除规则
+
+# 目标注册表路径
 $targetPaths = @(
-    "HKLM:\SOFTWARE\Classes\SystemFileAssociations",  # 你指定的核心路径
+    "HKLM:\SOFTWARE\Classes\SystemFileAssociations",
     "HKCU:\Software",
     "HKLM:\Software",
     "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FileExts",
     "HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\AppVMachineRegistry\Store\Integration\Backup\Software\Classes"
 )
 
-# 搜索关键词（保持不变）
-$searchKeywords = @("WPS", "\.wps", "Kingsoft", "KWPS")
-$excludeKeywords = @("AMDWPS", "UWPSystem")
+# 初始化提示
+Write-Host "`n=== WPS注册表清理工具 ===" -ForegroundColor $colorInfo
+Write-Host "已排除无关项：UWPSystem、AMDWPS`n" -ForegroundColor $colorInfo
 
-# 警告信息
-Write-Host "`n=== WPS注册表残留清理工具 ===" -ForegroundColor $colorInfo
-Write-Host "注意：此操作将修改注册表，请先备份重要数据！" -ForegroundColor $colorWarning
-Write-Host "正在准备清理，请稍候...`n" -ForegroundColor $colorInfo
-
-# 函数：检查是否需要排除
+# 函数：检查是否需要排除（含WPS但无关的项）
 function ShouldExclude($name) {
     foreach ($ex in $excludeKeywords) {
         if ($name -match $ex) {
-            return $true
+            return $true  # 匹配到排除关键词则返回需要排除
         }
     }
     return $false
 }
 
-# 1. 优先清理指定路径下的TypeOverlay项（核心修复）
-$targetTypeOverlayPath = "HKLM:\SOFTWARE\Classes\SystemFileAssociations"
-Write-Host "`n[1/2] 开始清理指定路径下的TypeOverlay项：$targetTypeOverlayPath" -ForegroundColor $colorInfo
+# 执行清理逻辑（完整处理流程）
+foreach ($action in $keywordActions) {
+    $keyword = $action.Keyword
+    $actionType = $action.Action
+    $description = $action.Description
 
-if (Test-Path $targetTypeOverlayPath) {
-    Get-ChildItem $targetTypeOverlayPath -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
-        $keyPath = $_.PSPath
-        $keyName = $_.Name
-        
-        if (ShouldExclude $keyName) {
-            Write-Host "跳过排除项: $keyName" -ForegroundColor $colorWarning
-            $script:skippedCount++
-            return
-        }
+    Write-Host "`n=== 处理关键词：$keyword（$description） ===" -ForegroundColor $colorInfo
 
-        # 读取TypeOverlay时避免类型转换错误
-        try {
-            $prop = Get-ItemProperty -Path $keyPath -Name "TypeOverlay" -ErrorAction Stop
-            if ($prop.TypeOverlay -match "WPS Office") {
-                Remove-ItemProperty -Path $keyPath -Name "TypeOverlay" -Force -ErrorAction Stop
-                Write-Host "已删除TypeOverlay: $keyPath" -ForegroundColor $colorSuccess
-                $script:deletedCount++
-            }
-        }
-        catch [System.InvalidCastException] {
-            Write-Host "跳过类型异常项（TypeOverlay）: $keyPath" -ForegroundColor $colorWarning
-            $script:skippedCount++
-        }
-        catch {
-            Write-Host "删除TypeOverlay失败: $keyPath - $_" -ForegroundColor $colorError
-            $script:errorCount++
-        }
-    }
-}
-else {
-    Write-Host "指定路径不存在: $targetTypeOverlayPath，请手动检查注册表" -ForegroundColor $colorError
-    $script:errorCount++
-}
-
-# 2. 清理所有目标路径下的其他WPS相关项
-Write-Host "`n[2/2] 开始清理其他WPS相关项..." -ForegroundColor $colorInfo
-foreach ($keyword in $searchKeywords) {
-    Write-Host "`n搜索关键词: $keyword" -ForegroundColor $colorInfo
     foreach ($path in $targetPaths) {
         if (-not (Test-Path $path)) {
-            Write-Host "路径不存在: $path（已跳过）" -ForegroundColor $colorWarning
-            $script:skippedCount++
+            Write-Host "路径不存在（已跳过）：$path" -ForegroundColor $colorWarning
             continue
         }
 
@@ -102,61 +76,85 @@ foreach ($keyword in $searchKeywords) {
             $keyPath = $_.PSPath
             $keyName = $_.Name
 
-            if (ShouldExclude $keyName) { return }
-
-            # 处理注册表项
-            try {
-                if ($keyName -match $keyword) {
-                    Remove-Item -Path $keyPath -Recurse -Force -ErrorAction Stop
-                    Write-Host "已删除项: $keyPath" -ForegroundColor $colorSuccess
-                    $script:deletedCount++
-                }
-            }
-            catch {
-                try {
-                    $defaultProp = Get-ItemProperty -Path $keyPath -Name "(Default)" -ErrorAction Stop
-                    if ($defaultProp."(Default)" -match $keyword) {
-                        Set-ItemProperty -Path $keyPath -Name "(Default)" -Value "" -Force -ErrorAction Stop
-                        Write-Host "已修改默认值: $keyPath" -ForegroundColor $colorWarning
-                        $script:modifiedCount++
-                    }
-                }
-                catch {
-                    Write-Host "处理项失败: $keyPath - $_" -ForegroundColor $colorError
-                    $script:errorCount++
-                }
+            # 先检查是否属于排除项（如AMDWPS）
+            if (ShouldExclude $keyName) {
+                Write-Host "已跳过无关项：$keyPath" -ForegroundColor $colorWarning
+                $script:skippedCount++
+                return
             }
 
-            # 处理注册表值（彻底解决类型转换问题）
-            try {
-                $props = Get-ItemProperty -Path $keyPath -ErrorAction Stop
-                if ($props) {
-                    # 只处理字符串类型的属性（避免二进制等特殊类型）
-                    $stringProps = $props | Get-Member -MemberType NoteProperty | Where-Object {
-                        $propValue = $props.$($_.Name)
-                        $propValue -is [string]  # 仅保留字符串类型
-                    }
-
-                    $stringProps | ForEach-Object {
-                        $propName = $_.Name
-                        if ($propName -eq "(Default)") { return }
-                        
-                        $propValue = $props.$propName
-                        if ($propValue -match $keyword -and -not (ShouldExclude $propValue)) {
-                            Remove-ItemProperty -Path $keyPath -Name $propName -Force -ErrorAction Stop
-                            Write-Host "已删除值: $keyPath\$propName" -ForegroundColor $colorSuccess
+            # 检查项名是否匹配当前关键词
+            if ($keyName -match $keyword) {
+                switch ($actionType) {
+                    "DeleteAll" {
+                        # 删除所有相关项
+                        try {
+                            Remove-Item -Path $keyPath -Recurse -Force -ErrorAction Stop
+                            Write-Host "已删除项：$keyPath" -ForegroundColor $colorSuccess
                             $script:deletedCount++
+                        }
+                        catch {
+                            Write-Host "删除项失败：$keyPath - $_" -ForegroundColor $colorError
+                        }
+                    }
+                    "DeleteFolder" {
+                        # 删除相关文件夹（注册表项）
+                        try {
+                            Remove-Item -Path $keyPath -Recurse -Force -ErrorAction Stop
+                            Write-Host "已删除文件夹：$keyPath" -ForegroundColor $colorSuccess
+                            $script:deletedCount++
+                        }
+                        catch {
+                            Write-Host "删除文件夹失败：$keyPath - $_" -ForegroundColor $colorError
+                        }
+                    }
+                    "DeleteOrEmpty" {
+                        # 删除项，失败则置空值
+                        try {
+                            Remove-Item -Path $keyPath -Recurse -Force -ErrorAction Stop
+                            Write-Host "已删除项：$keyPath" -ForegroundColor $colorSuccess
+                            $script:deletedCount++
+                        }
+                        catch {
+                            # 尝试置空默认值
+                            try {
+                                if (Get-ItemProperty -Path $keyPath -Name "(Default)" -ErrorAction Stop) {
+                                    Set-ItemProperty -Path $keyPath -Name "(Default)" -Value "" -Force -ErrorAction Stop
+                                    Write-Host "已置空值：$keyPath" -ForegroundColor $colorWarning
+                                    $script:modifiedCount++
+                                }
+                            }
+                            catch {
+                                Write-Host "处理项失败：$keyPath - $_" -ForegroundColor $colorError
+                            }
                         }
                     }
                 }
+                return  # 已处理整个项，无需检查内部值
             }
-            catch [System.InvalidCastException] {
-                Write-Host "跳过类型异常项（属性）: $keyPath" -ForegroundColor $colorWarning
-                $script:skippedCount++
-            }
-            catch {
-                Write-Host "处理属性失败: $keyPath - $_" -ForegroundColor $colorError
-                $script:errorCount++
+
+            # 检查项内属性值是否匹配关键词
+            $props = Get-ItemProperty -Path $keyPath -ErrorAction SilentlyContinue
+            if ($props) {
+                $props | Get-Member -MemberType NoteProperty -ErrorAction SilentlyContinue | ForEach-Object {
+                    $propName = $_.Name
+                    if ($propName -eq "(Default)") { return }
+
+                    $propValue = $props.$propName
+                    if ($propValue -match $keyword) {
+                        # 处理属性值匹配的情况
+                        try {
+                            Remove-ItemProperty -Path $keyPath -Name $propName -Force -ErrorAction Stop
+                            Write-Host "已删除值：$keyPath\$propName" -ForegroundColor $colorSuccess
+                            $script:deletedCount++
+                        }
+                        catch {
+                            Set-ItemProperty -Path $keyPath -Name $propName -Value "" -Force -ErrorAction Stop
+                            Write-Host "已置空值：$keyPath\$propName" -ForegroundColor $colorWarning
+                            $script:modifiedCount++
+                        }
+                    }
+                }
             }
         }
     }
@@ -164,8 +162,7 @@ foreach ($keyword in $searchKeywords) {
 
 # 清理完成报告
 Write-Host "`n`n=== 清理完成 ===" -ForegroundColor $colorInfo
-Write-Host "已删除项数量: $deletedCount" -ForegroundColor $colorSuccess
-Write-Host "已修改值数量: $modifiedCount" -ForegroundColor $colorWarning
-Write-Host "跳过项数量: $skippedCount" -ForegroundColor $colorInfo
-Write-Host "错误项数量: $errorCount" -ForegroundColor $colorError
+Write-Host "已删除项/值数量：$deletedCount" -ForegroundColor $colorSuccess
+Write-Host "已置空值数量：$modifiedCount" -ForegroundColor $colorWarning
+Write-Host "跳过的无关项数量（含AMDWPS等）：$skippedCount" -ForegroundColor $colorInfo
 Write-Host "`n建议重启电脑使更改生效！`n" -ForegroundColor $colorInfo
