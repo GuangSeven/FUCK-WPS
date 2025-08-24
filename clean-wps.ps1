@@ -2,7 +2,7 @@
 .SYNOPSIS
 清除WPS卸载残留注册表项，修复Office图标异常问题
 .DESCRIPTION
-根据https://www.nousbuild.org/codeu/fix-office-icon-due-to-wps/步骤实现，排除AMDWPS等无关项
+根据 https://www.nousbuild.org/codeu/fix-office-icon-due-to-wps/ 的步骤实现，排除AMDWPS等无关项
 #>
 
 # 检查管理员权限
