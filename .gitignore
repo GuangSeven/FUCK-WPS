@@ -1,2 +1,12 @@
-# Ignore Visual Studio Code workspace settings
+# PowerShell执行日志
+*.log
+*.ps1~
+
+# 编辑器配置（根据你的编辑器添加）
 .vscode/
+.idea/
+*.sublime-*
+
+# 系统临时文件
+Thumbs.db
+.DS_Store
