@@ -8,48 +8,12 @@ $targetPaths = @(
     "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FileExts"
 )
 $keywords = @("WPS", "Kingsoft", "KWPS", "WPS Office", "\.wps")
-$exclude = @("AMDWPS", "UWPSystem", "amd")  # 排除规则
+$exclude = @("AMDWPS", "UWPSystem", "amd")
 
 # 统计变量
 $script:deleted = 0
 $script:modified = 0
-$script:skipped = 0  # 仅统计「WPS相关但被排除」的项
-
-
-### 判断项是否与WPS相关（核心辅助函数）
-function IsWPSRelated {
-    param(
-        [string]$keyPath,
-        [array]$keywords
-    )
-    $keyName = (Split-Path $keyPath -Leaf)
-    
-    # 检查项名是否含WPS关键词
-    foreach ($kw in $keywords) {
-        if ($keyName -match $kw) {
-            return $true
-        }
-    }
-    
-    # 检查属性值是否含WPS关键词（仅字符串类型）
-    try {
-        $props = Get-ItemProperty -Path $keyPath -ErrorAction SilentlyContinue
-        if ($props) {
-            $props | Get-Member -MemberType NoteProperty | ForEach-Object {
-                $propValue = $props.$($_.Name)
-                if ($propValue -is [string]) {
-                    foreach ($kw in $keywords) {
-                        if ($propValue -match $kw) {
-                            return $true
-                        }
-                    }
-                }
-            }
-        }
-    } catch {}
-    
-    return $false
-}
+$script:skipped = 0
 
 
 ### 1. 优先清理指定路径（核心路径）
@@ -64,23 +28,18 @@ function Remove-WPSPriority {
         $keyPath = $_.PSPath
         $keyName = $_.Name
 
-        # 第一步：判断是否是WPS相关项（不相关则直接跳过，不统计）
-        if (-not (IsWPSRelated $keyPath $keywords)) {
-            return
-        }
-
-        # 第二步：检查是否匹配排除规则（仅WPS相关项才会进入此判断）
+        # 跳过排除项
         foreach ($ex in $exclude) {
             if ($keyName -match $ex) {
-                Write-Host "Skipped (WPS-related but excluded): $keyPath" -ForegroundColor Cyan
+                Write-Host "Skipped (excluded): $keyPath" -ForegroundColor Cyan
                 $script:skipped++
                 return
             }
         }
 
-        # ========== 处理TypeOverlay（仅当属性存在时） ==========
+        # ========== 修复核心：先判断TypeOverlay是否存在 ==========
         $overlay = Get-ItemProperty -Path $keyPath -Name "TypeOverlay" -ErrorAction SilentlyContinue
-        if ($overlay) {
+        if ($overlay) {  # 仅当属性存在时才处理
             foreach ($kw in $keywords) {
                 if ($overlay.TypeOverlay -match $kw) {
                     try {
@@ -90,7 +49,7 @@ function Remove-WPSPriority {
                     } catch {
                         Write-Host "Delete TypeOverlay failed: $keyPath - $_" -ForegroundColor Red
                     }
-                    break
+                    break  # 匹配到关键词就停止，避免重复处理
                 }
             }
         }
@@ -103,24 +62,30 @@ function Remove-WPSPriority {
                     Write-Host "Deleted item: $keyPath" -ForegroundColor Green
                     $script:deleted++
                 } catch {
+                    # 区分权限错误和普通错误
                     if ($_.Exception -is [System.Security.SecurityException]) {
                         Write-Host "Permission denied: $keyPath" -ForegroundColor DarkRed
-                        $script:skipped++  # 权限不足的WPS项也统计到跳过
+                        $script:skipped++
                     } else {
+                        Write-Host "Delete failed: $keyPath - $_" -ForegroundColor Red
+                        # 尝试修改值
                         try {
                             $props = Get-ItemProperty -Path $keyPath -ErrorAction Stop
                             $props | Get-Member -MemberType NoteProperty | ForEach-Object {
                                 $propName = $_.Name
                                 $propValue = $props.$propName
-                                if ($propValue -match $kw) {
-                                    Set-ItemProperty -Path $keyPath -Name $propName -Value "" -Force -ErrorAction Stop
-                                    Write-Host "Modified value: $keyPath\$propName" -ForegroundColor Yellow
-                                    $script:modified++
+                                foreach ($kw in $keywords) {
+                                    if ($propValue -match $kw) {
+                                        Set-ItemProperty -Path $keyPath -Name $propName -Value "" -Force -ErrorAction Stop
+                                        Write-Host "Modified value: $keyPath\$propName" -ForegroundColor Yellow
+                                        $script:modified++
+                                        break
+                                    }
                                 }
                             }
                         } catch {
                             Write-Host "Modify failed: $keyPath - $_" -ForegroundColor Red
-                            $script:skipped++  # 修改失败的WPS项也统计到跳过
+                            $script:skipped++
                         }
                     }
                 }
@@ -144,15 +109,10 @@ function Remove-WPSTargets {
             $keyPath = $_.PSPath
             $keyName = $_.Name
 
-            # 第一步：判断是否是WPS相关项（不相关则直接跳过，不统计）
-            if (-not (IsWPSRelated $keyPath $keywords)) {
-                return
-            }
-
-            # 第二步：检查是否匹配排除规则（仅WPS相关项才会进入此判断）
+            # 跳过排除项
             foreach ($ex in $exclude) {
                 if ($keyName -match $ex) {
-                    Write-Host "Skipped (WPS-related but excluded): $keyPath" -ForegroundColor Cyan
+                    Write-Host "Skipped (excluded): $keyPath" -ForegroundColor Cyan
                     $script:skipped++
                     return
                 }
@@ -166,19 +126,25 @@ function Remove-WPSTargets {
                         Write-Host "Deleted item: $keyPath" -ForegroundColor Green
                         $script:deleted++
                     } catch {
+                        # 区分权限错误和普通错误
                         if ($_.Exception -is [System.Security.SecurityException]) {
                             Write-Host "Permission denied: $keyPath" -ForegroundColor DarkRed
                             $script:skipped++
                         } else {
+                            Write-Host "Delete failed: $keyPath - $_" -ForegroundColor Red
+                            # 尝试修改值
                             try {
                                 $props = Get-ItemProperty -Path $keyPath -ErrorAction Stop
                                 $props | Get-Member -MemberType NoteProperty | ForEach-Object {
                                     $propName = $_.Name
                                     $propValue = $props.$propName
-                                    if ($propValue -match $kw) {
-                                        Set-ItemProperty -Path $keyPath -Name $propName -Value "" -Force -ErrorAction Stop
-                                        Write-Host "Modified value: $keyPath\$propName" -ForegroundColor Yellow
-                                        $script:modified++
+                                    foreach ($kw in $keywords) {
+                                        if ($propValue -match $kw) {
+                                            Set-ItemProperty -Path $keyPath -Name $propName -Value "" -Force -ErrorAction Stop
+                                            Write-Host "Modified value: $keyPath\$propName" -ForegroundColor Yellow
+                                            $script:modified++
+                                            break
+                                        }
                                     }
                                 }
                             } catch {
@@ -200,8 +166,8 @@ Write-Host "=== Starting WPS Registry Cleanup ===" -ForegroundColor Magenta
 Remove-WPSPriority
 Remove-WPSTargets
 
-# 最终汇总（仅统计WPS相关项的处理结果）
-Write-Host "`n=== Cleanup Summary (WPS-related items only) ===" -ForegroundColor Magenta
+# 最终汇总
+Write-Host "`n=== Cleanup Summary ===" -ForegroundColor Magenta
 Write-Host "Deleted: $script:deleted" -ForegroundColor Green
 Write-Host "Modified: $script:modified" -ForegroundColor Yellow
-Write-Host "Skipped (excluded/denied/failed): $script:skipped" -ForegroundColor Cyan
+Write-Host "Skipped: $script:skipped" -ForegroundColor Cyan
