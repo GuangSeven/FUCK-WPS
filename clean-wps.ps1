@@ -8,7 +8,7 @@ $targetPaths = @(
     "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FileExts"
 )
 $keywords = @("WPS", "Kingsoft", "KWPS", "WPS Office", "\.wps")
-$exclude = @("AMDWPS", "UWPSystem", "amd")
+$exclude = @("AMDWPS", "UWPSystem")
 
 # 统计变量
 $script:deleted = 0
