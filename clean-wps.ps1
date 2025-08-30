@@ -42,12 +42,13 @@ function Remove-WPSPriority {
         if ($overlay) {  # 仅当属性存在时才处理
             foreach ($kw in $keywords) {
                 if ($overlay.TypeOverlay -match $kw) {
+                    Write-Host "准备清理 (TypeOverlay): $keyPath" -ForegroundColor Yellow
                     try {
                         Remove-ItemProperty -Path $keyPath -Name "TypeOverlay" -Force -ErrorAction Stop
-                        Write-Host "Deleted TypeOverlay: $keyPath" -ForegroundColor Green
-                        $script:deleted++
+                        Write-Host "已清理 TypeOverlay: $keyPath" -ForegroundColor Green
+                        $script:modified++ # 这更像修改而不是删除
                     } catch {
-                        Write-Host "Delete TypeOverlay failed: $keyPath - $_" -ForegroundColor Red
+                        Write-Host "清理 TypeOverlay 失败: $keyPath - $_" -ForegroundColor Red
                     }
                     break  # 匹配到关键词就停止，避免重复处理
                 }
@@ -57,17 +58,18 @@ function Remove-WPSPriority {
         # 处理注册表项（删除或修改）
         foreach ($kw in $keywords) {
             if ($keyName -match $kw) {
+                Write-Host "准备删除 (注册表项): $keyPath" -ForegroundColor Yellow
                 try {
                     Remove-Item -Path $keyPath -Recurse -Force -ErrorAction Stop
-                    Write-Host "Deleted item: $keyPath" -ForegroundColor Green
+                    Write-Host "已删除项: $keyPath" -ForegroundColor Green
                     $script:deleted++
                 } catch {
                     # 区分权限错误和普通错误
                     if ($_.Exception -is [System.Security.SecurityException]) {
-                        Write-Host "Permission denied: $keyPath" -ForegroundColor DarkRed
+                        Write-Host "权限不足，跳过: $keyPath" -ForegroundColor DarkRed
                         $script:skipped++
                     } else {
-                        Write-Host "Delete failed: $keyPath - $_" -ForegroundColor Red
+                        Write-Host "删除失败，尝试清理内部属性: $keyPath - $_" -ForegroundColor Red
                         # 尝试修改值
                         try {
                             $props = Get-ItemProperty -Path $keyPath -ErrorAction Stop
@@ -76,15 +78,16 @@ function Remove-WPSPriority {
                                 $propValue = $props.$propName
                                 foreach ($kw in $keywords) {
                                     if ($propValue -match $kw) {
+                                        Write-Host "准备清理 (属性值): $keyPath\$propName" -ForegroundColor Yellow
                                         Set-ItemProperty -Path $keyPath -Name $propName -Value "" -Force -ErrorAction Stop
-                                        Write-Host "Modified value: $keyPath\$propName" -ForegroundColor Yellow
+                                        Write-Host "已清理属性: $keyPath\$propName" -ForegroundColor DarkCyan
                                         $script:modified++
                                         break
                                     }
                                 }
                             }
                         } catch {
-                            Write-Host "Modify failed: $keyPath - $_" -ForegroundColor Red
+                            Write-Host "清理属性失败: $keyPath - $_" -ForegroundColor Red
                             $script:skipped++
                         }
                     }
@@ -121,17 +124,18 @@ function Remove-WPSTargets {
             # 处理注册表项（删除或修改）
             foreach ($kw in $keywords) {
                 if ($keyName -match $kw) {
+                    Write-Host "准备删除 (注册表项): $keyPath" -ForegroundColor Yellow
                     try {
                         Remove-Item -Path $keyPath -Recurse -Force -ErrorAction Stop
-                        Write-Host "Deleted item: $keyPath" -ForegroundColor Green
+                        Write-Host "已删除项: $keyPath" -ForegroundColor Green
                         $script:deleted++
                     } catch {
                         # 区分权限错误和普通错误
                         if ($_.Exception -is [System.Security.SecurityException]) {
-                            Write-Host "Permission denied: $keyPath" -ForegroundColor DarkRed
+                            Write-Host "权限不足，跳过: $keyPath" -ForegroundColor DarkRed
                             $script:skipped++
                         } else {
-                            Write-Host "Delete failed: $keyPath - $_" -ForegroundColor Red
+                            Write-Host "删除失败，尝试清理内部属性: $keyPath - $_" -ForegroundColor Red
                             # 尝试修改值
                             try {
                                 $props = Get-ItemProperty -Path $keyPath -ErrorAction Stop
@@ -140,15 +144,16 @@ function Remove-WPSTargets {
                                     $propValue = $props.$propName
                                     foreach ($kw in $keywords) {
                                         if ($propValue -match $kw) {
+                                            Write-Host "准备清理 (属性值): $keyPath\$propName" -ForegroundColor Yellow
                                             Set-ItemProperty -Path $keyPath -Name $propName -Value "" -Force -ErrorAction Stop
-                                            Write-Host "Modified value: $keyPath\$propName" -ForegroundColor Yellow
+                                            Write-Host "已清理属性: $keyPath\$propName" -ForegroundColor DarkCyan
                                             $script:modified++
                                             break
                                         }
                                     }
                                 }
                             } catch {
-                                Write-Host "Modify failed: $keyPath - $_" -ForegroundColor Red
+                                Write-Host "清理属性失败: $keyPath - $_" -ForegroundColor Red
                                 $script:skipped++
                             }
                         }
