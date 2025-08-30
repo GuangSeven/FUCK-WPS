@@ -4,7 +4,7 @@
 
 ## 报告问题
 
-- 若发现脚本bug或使用问题，请通过 [Issues](https://github.com/你的用户名/仓库名/issues) 提交，标题请注明「Bug: 问题描述」，并附上：
+- 若发现脚本bug或使用问题，请通过 [Issues](https://github.com/GuangSeven/FUCK-WPS/issues) 提交，标题请注明「Bug: 问题描述」，并附上：
   - 操作系统版本
   - PowerShell版本
   - 具体错误信息或截图
