@@ -1,0 +1,63 @@
+{
+  "keywords": [
+    "WPS",
+    "Kingsoft",
+    "KWPS",
+    "WPS Office",
+    "\\.wps",
+    "\\.et",
+    "\\.dps",
+    "wpscloud",
+    "wpscloudsvr",
+    "KSO",
+    "KSO_"
+  ],
+  "excludePatterns": [
+    "AMDWPS",
+    "UWPSystem",
+    "Microsoft",
+    "Windows",
+    "Office",
+    "Adobe"
+  ],
+  "priorityPaths": [
+    "SOFTWARE\\Classes\\SystemFileAssociations",
+    "SOFTWARE\\Classes\\.wps",
+    "SOFTWARE\\Classes\\.et",
+    "SOFTWARE\\Classes\\.dps",
+    "SOFTWARE\\Classes\\WPS.*",
+    "SOFTWARE\\Classes\\KSO.*"
+  ],
+  "registryPaths": {
+    "HKLM": [
+      "SOFTWARE\\Kingsoft",
+      "SOFTWARE\\WPS",
+      "SOFTWARE\\Classes\\CLSID\\{*}\\InprocServer32",
+      "SOFTWARE\\Classes\\Interface\\{*}\\ProxyStubClsid32",
+      "SOFTWARE\\Classes\\TypeLib\\{*}\\*",
+      "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\.wps*",
+      "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\.et*",
+      "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\.dps*",
+      "SOFTWARE\\Classes\\Installer\\Products\\*"
+    ],
+    "HKCU": [
+      "SOFTWARE\\Kingsoft",
+      "SOFTWARE\\WPS",
+      "SOFTWARE\\Classes\\CLSID\\{*}\\InprocServer32",
+      "SOFTWARE\\Classes\\Interface\\{*}\\ProxyStubClsid32",
+      "SOFTWARE\\Classes\\TypeLib\\{*}\\*",
+      "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\.wps*",
+      "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\.et*",
+      "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\.dps*",
+      "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\.wps*",
+      "SOFTWARE\\Microsoft\\Office\\*\\WPS*"
+    ]
+  },
+  "settings": {
+    "autoBackup": true,
+    "autoRefreshIcons": true,
+    "confirmRefreshIcons": true,
+    "maxDepth": 10,
+    "skipSystemKeys": true
+  }
+}
