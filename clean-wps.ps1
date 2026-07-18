@@ -168,7 +168,7 @@ function Write-Log {
     $entry = "[{0:yyyy-MM-dd HH:mm:ss.fff}] [{1,-7}] {2} {3}" -f (Get-Date), $Level, $Message, $Path
     $script:logEntries += $entry
     if ($script:logEntries.Count -ge 100) {
-        Flush-Log
+        Sync-Log
     }
     if ($Verbose -or $Level -in @('ERROR', 'WARN')) {
         $color = switch ($Level) {
@@ -182,7 +182,7 @@ function Write-Log {
     }
 }
 
-function Flush-Log {
+function Sync-Log {
     if ($script:logEntries.Count -gt 0) {
         [System.IO.File]::AppendAllLines($script:logFilePath, $script:logEntries, [System.Text.Encoding]::UTF8)
         $script:logEntries.Clear()
@@ -190,7 +190,7 @@ function Flush-Log {
 }
 
 function Close-Log {
-    Flush-Log
+    Sync-Log
     $footer = @(
         "",
         "=== Summary ===",
@@ -311,7 +311,7 @@ function Test-KeywordMatch {
     return $kwRegex.IsMatch($InputString)
 }
 
-function Process-RegistryKey {
+function Invoke-RegistryKeyClean {
     param(
         [Microsoft.Win32.RegistryKey] $Key,
         [string] $FullPath,
@@ -390,7 +390,7 @@ function Process-RegistryKey {
             if ($global:CancelToken) { return }
             $subKey = $Key.OpenSubKey($subKeyName, $true) # 可写
             if ($subKey) {
-                Process-RegistryKey $subKey "$FullPath\$subKeyName" $IsPriorityPath
+                Invoke-RegistryKeyClean $subKey "$FullPath\$subKeyName" $IsPriorityPath
                 $subKey.Close()
             }
         }
@@ -423,30 +423,30 @@ function Expand-WildcardPath {
             $parentPath = $item.Path
             try {
                 $subKeyNames = $key.GetSubKeyNames()
-                $matches = @()
+                $matchedItems = @()
                 
                 if ($part -eq '*') {
                     # 完整通配符：匹配所有子键
-                    $matches = $subKeyNames
+                    $matchedItems = $subKeyNames
                 } elseif ($part -match '^\{.*\}$') {
                     # GUID 模式：{*}
-                    $matches = $subKeyNames | Where-Object { $_ -match '^\{.*\}$' }
+                    $matchedItems = $subKeyNames | Where-Object { $_ -match '^\{.*\}$' }
                 } elseif ($part -match '^\*\..+') {
                     # 后缀通配符：如 *.wps
                     $suffix = $part.Substring(2)
-                    $matches = $subKeyNames | Where-Object { $_ -like "*$suffix" }
+                    $matchedItems = $subKeyNames | Where-Object { $_ -like "*$suffix" }
                 } elseif ($part -match '.+\*$') {
                     # 前缀通配符：如 WPS.* 或 .wps*
                     $prefix = $part.Substring(0, $part.Length - 1)
-                    $matches = $subKeyNames | Where-Object { $_ -like "$prefix*" }
+                    $matchedItems = $subKeyNames | Where-Object { $_ -like "$prefix*" }
                 } else {
                     # 精确匹配
                     if ($subKeyNames -contains $part) {
-                        $matches = @($part)
+                        $matchedItems = @($part)
                     }
                 }
                 
-                foreach ($subName in $matches) {
+                foreach ($subName in $matchedItems) {
                     $subKey = $key.OpenSubKey($subName, $true)
                     if ($subKey) {
                         $fullPath = if ($parentPath) { "$parentPath\$subName" } else { $subName }
@@ -474,7 +474,7 @@ function Expand-WildcardPath {
     return $expandedPaths
 }
 
-function Process-PathList {
+function Invoke-PathScan {
     param(
         [hashtable] $Paths,
         [bool] $IsPriority = $false
@@ -503,7 +503,7 @@ function Process-PathList {
             try {
                 $rootKey = $hive.OpenSubKey($subPath, $true)
                 if ($rootKey) {
-                    Process-RegistryKey $rootKey "$hiveName\$subPath" $IsPriority
+                    Invoke-RegistryKeyClean $rootKey "$hiveName\$subPath" $IsPriority
                     $rootKey.Close()
                 } else {
                     Write-Log 'INFO' "路径不存在: $hiveName\$subPath"
@@ -561,16 +561,16 @@ try {
     Export-RegistryBackup
 
     Update-Progress -Status '开始扫描优先路径...' -PercentComplete 0
-    Process-PathList -Paths $priorityPathsTable -IsPriority $true
+    Invoke-PathScan -Paths $priorityPathsTable -IsPriority $true
 
     Update-Progress -Status '扫描 HKLM 目标路径...' -PercentComplete 30
     if ($registryPaths.HKLM) {
-        Process-PathList -Paths @{ 'HKLM' = $registryPaths.HKLM }
+        Invoke-PathScan -Paths @{ 'HKLM' = $registryPaths.HKLM }
     }
 
     Update-Progress -Status '扫描 HKCU 目标路径...' -PercentComplete 60
     if ($registryPaths.HKCU) {
-        Process-PathList -Paths @{ 'HKCU' = $registryPaths.HKCU }
+        Invoke-PathScan -Paths @{ 'HKCU' = $registryPaths.HKCU }
     }
 
     Update-Progress -Status '清理完成，生成汇总...' -PercentComplete 100
